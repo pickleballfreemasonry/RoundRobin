@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>匹克球賽程產生器 (Pickleball Scheduler)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        pickle: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            900: '#14532d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: "Microsoft JhengHei", sans-serif; }
+    </style>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-pickle-600 text-white shadow-lg">
+        <div class="max-w-5xl mx-auto px-4 py-6">
+            <h1 class="text-3xl font-bold">🎾 匹克球賽程產生器</h1>
+            <p class="mt-2 text-pickle-100">自動產生雙打循環賽程，支援全循環或指定場次安排。</p>
+        </div>
+    </header>
+
+    <main class="flex-grow max-w-5xl mx-auto px-4 py-8 w-full grid grid-cols-1 md:grid-cols-3 gap-8">
+        
+        <!-- Left Column: Inputs -->
+        <div class="md:col-span-1 space-y-6">
+            <div class="bg-white p-6 rounded-xl shadow-md border border-gray-100">
+                <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-pickle-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    設定參數
+                </h2>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">參賽人員名單 (每行一位)</label>
+                    <textarea id="playerInput" rows="10" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pickle-500 focus:border-pickle-500 text-sm" placeholder="張三&#10;李四&#10;王五&#10;趙六&#10;..."></textarea>
+                    <p class="text-xs text-gray-500 mt-1 text-right">目前人數: <span id="playerCount">0</span></p>
+                </div>
+
+                <div class="mb-4">
+                    <div class="flex items-center mb-2">
+                        <input id="forcePartnerAllInput" type="checkbox" class="w-4 h-4 text-pickle-600 border-gray-300 rounded focus:ring-pickle-500" checked>
+                        <label for="forcePartnerAllInput" class="ml-2 block text-sm font-bold text-gray-800">
+                            強制每人互搭一次 (全循環)
+                        </label>
+                    </div>
+                    <p class="text-xs text-gray-500 mb-4 ml-6">若勾選，場次可能會因為人數增加而大幅變多。</p>
+
+                    <label class="block text-sm font-medium text-gray-700 mb-2">每人最少場次</label>
+                    <input type="number" id="minGamesInput" value="4" min="1" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pickle-500 focus:border-pickle-500">
+                    <p id="minGamesHint" class="text-xs text-orange-600 mt-2 font-medium hidden"></p>
+                </div>
+
+                <div class="mb-6 flex items-center">
+                    <input id="avoidConsecutiveInput" type="checkbox" class="w-4 h-4 text-pickle-600 border-gray-300 rounded focus:ring-pickle-500" checked>
+                    <label for="avoidConsecutiveInput" class="ml-2 block text-sm font-medium text-gray-700">
+                        盡量避免連續出賽
+                    </label>
+                </div>
+
+                <button id="generateBtn" class="w-full bg-pickle-600 hover:bg-pickle-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-md flex justify-center items-center">
+                    <span id="btnText">安排賽程</span>
+                    <svg id="btnIcon" class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                </button>
+            </div>
+
+            <div id="statsCard" class="bg-white p-6 rounded-xl shadow-md border border-gray-100 hidden">
+                <h3 class="text-lg font-bold text-gray-800 mb-3">賽程統計</h3>
+                <ul class="space-y-2 text-sm text-gray-600">
+                    <li class="flex justify-between"><span>總場次:</span> <span id="totalMatches" class="font-bold text-gray-900">0</span></li>
+                    <li class="flex justify-between"><span>參賽人數:</span> <span id="totalPlayers" class="font-bold text-gray-900">0</span></li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Right Column: Results -->
+        <div class="md:col-span-2 space-y-6">
+            
+            <!-- Welcome State -->
+            <div id="welcomeState" class="bg-white p-12 rounded-xl shadow-md border border-gray-100 text-center text-gray-500">
+                <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                <p class="text-lg">請在左側輸入名單並點擊「安排賽程」</p>
+            </div>
+
+            <!-- Schedule Table -->
+            <div id="scheduleContainer" class="hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold text-gray-800">賽程表</h2>
+                    <button id="exportBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        匯出 CSV
+                    </button>
+                </div>
+
+                <div class="bg-white overflow-hidden shadow-md rounded-lg border border-gray-200">
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">場次</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-5/12">隊伍 1</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/12 text-center">VS</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-5/12">隊伍 2</th>
+                                </tr>
+                            </thead>
+                            <tbody id="scheduleTableBody" class="bg-white divide-y divide-gray-200">
+                                <!-- Generated rows will go here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Player Stats Table (Optional but helpful) -->
+                <div class="mt-8">
+                    <h3 class="text-lg font-bold text-gray-800 mb-3">個人場次統計</h3>
+                    <div class="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-200 overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">姓名</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">場次</th>
+                                </tr>
+                            </thead>
+                            <tbody id="statsTableBody" class="bg-white divide-y divide-gray-200">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-gray-800 text-gray-400 py-6 text-center text-sm">
+        <p>&copy; 2024 Pickleball Scheduler Pro</p>
+    </footer>
+
+    <script>
+        // --- Logic ---
+        const playerInput = document.getElementById('playerInput');
+        const playerCountLabel = document.getElementById('playerCount');
+        const generateBtn = document.getElementById('generateBtn');
+        const minGamesInput = document.getElementById('minGamesInput');
+        const minGamesHint = document.getElementById('minGamesHint');
+        const avoidConsecutiveInput = document.getElementById('avoidConsecutiveInput');
+        const forcePartnerAllInput = document.getElementById('forcePartnerAllInput');
+        
+        // Output Elements
+        const welcomeState = document.getElementById('welcomeState');
+        const scheduleContainer = document.getElementById('scheduleContainer');
+        const scheduleTableBody = document.getElementById('scheduleTableBody');
+        const statsTableBody = document.getElementById('statsTableBody');
+        const statsCard = document.getElementById('statsCard');
+        const totalMatchesLabel = document.getElementById('totalMatches');
+        const totalPlayersLabel = document.getElementById('totalPlayers');
+        const exportBtn = document.getElementById('exportBtn');
+
+        let currentMatches = [];
+
+        // Function to update the hint text
+        function updateHint() {
+            const count = playerInput.value.split('\n').filter(line => line.trim() !== '').length;
+            playerCountLabel.textContent = count;
+            
+            if (forcePartnerAllInput.checked && count > 1) {
+                const required = count - 1;
+                minGamesHint.textContent = `⚠️ 目前 ${count} 位參賽者，若全互搭每人至少需打 ${required} 場`;
+                minGamesHint.classList.remove('hidden');
+            } else {
+                minGamesHint.classList.add('hidden');
+            }
+        }
+
+        // Update player count and hint on input
+        playerInput.addEventListener('input', updateHint);
+        forcePartnerAllInput.addEventListener('change', updateHint);
+
+        // Fisher-Yates Shuffle
+        function shuffle(array) {
+            let currentIndex = array.length, randomIndex;
+            while (currentIndex != 0) {
+                randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+            }
+            return array;
+        }
+
+        generateBtn.addEventListener('click', async () => {
+            const namesText = playerInput.value;
+            const players = namesText.split('\n').map(p => p.trim()).filter(p => p !== '');
+            const minGames = parseInt(minGamesInput.value) || 0;
+            const avoidConsecutive = avoidConsecutiveInput.checked;
+            const forcePartnerAll = forcePartnerAllInput.checked;
+
+            if (players.length < 4) {
+                alert('至少需要 4 位參賽者才能進行雙打。');
+                return;
+            }
+
+            // UI Feedback
+            const originalBtnText = document.getElementById('btnText').textContent;
+            document.getElementById('btnText').textContent = "計算最佳賽程中...";
+            generateBtn.disabled = true;
+
+            // Use setTimeout to allow UI to update before heavy calculation
+            setTimeout(() => {
+                const bestSchedule = findBestSchedule(players, minGames, avoidConsecutive, forcePartnerAll);
+                
+                currentMatches = bestSchedule.matches;
+                renderSchedule(bestSchedule, players);
+
+                // Reset UI
+                document.getElementById('btnText').textContent = originalBtnText;
+                generateBtn.disabled = false;
+            }, 50);
+        });
+
+        function findBestSchedule(players, minGames, avoidConsecutive, forcePartnerAll) {
+            // Run N simulations and pick the best one
+            // Criteria for "Best":
+            // 1. Fewest total matches (Efficiency)
+            // 2. Lowest standard deviation of games played (Fairness)
+            
+            const SIMULATIONS = 100;
+            let bestResult = null;
+            let minTotalMatches = Infinity;
+            let minStdDev = Infinity;
+
+            for (let i = 0; i < SIMULATIONS; i++) {
+                const result = generateSingleSchedule(players, minGames, avoidConsecutive, forcePartnerAll);
+                
+                // Calculate stats for comparison
+                const matchCount = result.matches.length;
+                const playedCounts = Object.values(result.stats).map(s => s.played);
+                
+                // Calculate Standard Deviation
+                const mean = playedCounts.reduce((a, b) => a + b, 0) / playedCounts.length;
+                const variance = playedCounts.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / playedCounts.length;
+                const stdDev = Math.sqrt(variance);
+
+                // Comparison Logic
+                // Priority 1: Fewer Matches
+                if (matchCount < minTotalMatches) {
+                    minTotalMatches = matchCount;
+                    minStdDev = stdDev;
+                    bestResult = result;
+                } 
+                // Priority 2: If matches are equal, prefer lower variance (more equal playing time)
+                else if (matchCount === minTotalMatches) {
+                    if (stdDev < minStdDev) {
+                        minStdDev = stdDev;
+                        bestResult = result;
+                    }
+                }
+            }
+            return bestResult;
+        }
+
+        function generateSingleSchedule(players, minGames, avoidConsecutive, forcePartnerAll) {
+            let matches = [];
+            let playerStats = {};
+            players.forEach(p => {
+                playerStats[p] = { played: 0, partners: new Set() };
+            });
+
+            // Deep copy helper for stats if we were backtracking, but here we just rebuild
+            function addMatch(t1p1, t1p2, t2p1, t2p2, reason) {
+                matches.push({
+                    id: matches.length + 1,
+                    team1: [t1p1, t1p2],
+                    team2: [t2p1, t2p2],
+                    reason: reason
+                });
+                [t1p1, t1p2, t2p1, t2p2].forEach(p => playerStats[p].played++);
+                playerStats[t1p1].partners.add(t1p2);
+                playerStats[t1p2].partners.add(t1p1);
+                playerStats[t2p1].partners.add(t2p2);
+                playerStats[t2p2].partners.add(t2p1);
+            }
+
+            // Phase 1: Force Partner with Everyone (Conditional)
+            if (forcePartnerAll) {
+                let allPairs = [];
+                for (let i = 0; i < players.length; i++) {
+                    for (let j = i + 1; j < players.length; j++) {
+                        allPairs.push([players[i], players[j]]);
+                    }
+                }
+                allPairs = shuffle(allPairs);
+
+                while (allPairs.length > 0) {
+                    const team1 = allPairs.pop();
+                    
+                    let team2Index = -1;
+                    // Try to find non-overlapping team
+                    for (let i = 0; i < allPairs.length; i++) {
+                        const candidate = allPairs[i];
+                        if (!candidate.includes(team1[0]) && !candidate.includes(team1[1])) {
+                            team2Index = i;
+                            break;
+                        }
+                    }
+
+                    let team2;
+                    if (team2Index !== -1) {
+                        team2 = allPairs.splice(team2Index, 1)[0];
+                    } else {
+                        // Filler needed
+                        let candidates = players.filter(p => !team1.includes(p));
+                        // Prioritize those with fewest games
+                        candidates.sort((a, b) => playerStats[a].played - playerStats[b].played);
+                        
+                        // Add randomness to filler selection if counts are equal to avoid patterns
+                        if (candidates.length > 2 && playerStats[candidates[0]].played === playerStats[candidates[1]].played) {
+                             candidates = shuffle(candidates);
+                        }
+
+                        team2 = [candidates[0], candidates[1]];
+                    }
+
+                    addMatch(team1[0], team1[1], team2[0], team2[1], "Partnership Requirement");
+                }
+            }
+
+            // Phase 2: Satisfy Minimum Games (Smart Fill)
+            let maxLoop = 1000; 
+            while (maxLoop > 0) {
+                let needyPlayers = players.filter(p => playerStats[p].played < minGames);
+                if (needyPlayers.length === 0) break;
+
+                // Sort needy players
+                needyPlayers.sort((a, b) => playerStats[a].played - playerStats[b].played);
+                
+                let p1 = needyPlayers[0];
+
+                let others = players.filter(p => p !== p1);
+                
+                // Score others
+                let scoredOthers = others.map(p => {
+                    let score = 0;
+                    if (playerStats[p].played < minGames) score += 100;
+                    if (!playerStats[p1].partners.has(p)) score += 50;
+                    return { player: p, score: score };
+                });
+                
+                scoredOthers.sort((a, b) => b.score - a.score || Math.random() - 0.5);
+                
+                let p2 = scoredOthers[0].player;
+                
+                let remaining = others.filter(p => p !== p2);
+                
+                let scoredOpponents = remaining.map(p => {
+                    let score = 0;
+                    if (playerStats[p].played < minGames) score += 100;
+                    return { player: p, score: score };
+                });
+
+                scoredOpponents.sort((a, b) => b.score - a.score || Math.random() - 0.5);
+
+                let p3 = scoredOpponents[0].player;
+                let p4 = scoredOpponents[1].player;
+
+                addMatch(p1, p2, p3, p4, "Min Games Requirement");
+                maxLoop--;
+            }
+
+            // Phase 3: Reorder matches
+            if (avoidConsecutive) {
+                matches = reorderMatches(matches);
+            } else {
+                matches = shuffle(matches);
+                matches.forEach((m, idx) => {
+                    m.id = idx + 1;
+                });
+            }
+
+            return { matches, stats: playerStats };
+        }
+
+        function reorderMatches(matches) {
+            let pool = [...matches];
+            let schedule = [];
+            let lastPlayers = new Set();
+
+            while (pool.length > 0) {
+                let bestIndex = -1;
+                let minOverlap = 5; 
+
+                for (let i = 0; i < pool.length; i++) {
+                    const m = pool[i];
+                    const currentPlayers = [m.team1[0], m.team1[1], m.team2[0], m.team2[1]];
+                    
+                    let overlap = 0;
+                    for (const p of currentPlayers) {
+                        if (lastPlayers.has(p)) overlap++;
+                    }
+
+                    if (overlap === 0) {
+                        bestIndex = i;
+                        minOverlap = 0;
+                        break; 
+                    }
+
+                    if (overlap < minOverlap) {
+                        minOverlap = overlap;
+                        bestIndex = i;
+                    }
+                }
+
+                if (bestIndex !== -1) {
+                    const selected = pool.splice(bestIndex, 1)[0];
+                    schedule.push(selected);
+                    lastPlayers = new Set([selected.team1[0], selected.team1[1], selected.team2[0], selected.team2[1]]);
+                } else {
+                    const selected = pool.shift();
+                    schedule.push(selected);
+                }
+            }
+
+            schedule.forEach((m, idx) => {
+                m.id = idx + 1;
+            });
+
+            return schedule;
+        }
+
+        function renderSchedule(schedule, players) {
+            const matches = schedule.matches;
+            const stats = schedule.stats;
+
+            welcomeState.classList.add('hidden');
+            scheduleContainer.classList.remove('hidden');
+            statsCard.classList.remove('hidden');
+
+            totalMatchesLabel.textContent = matches.length;
+            totalPlayersLabel.textContent = players.length;
+
+            scheduleTableBody.innerHTML = '';
+            matches.forEach(match => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-50 transition';
+                tr.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium">${match.id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded mr-2">${match.team1[0]}</span>
+                        <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded">${match.team1[1]}</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400 font-bold text-center">vs</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <span class="bg-red-100 text-red-800 px-2 py-1 rounded mr-2">${match.team2[0]}</span>
+                        <span class="bg-red-100 text-red-800 px-2 py-1 rounded">${match.team2[1]}</span>
+                    </td>
+                `;
+                scheduleTableBody.appendChild(tr);
+            });
+
+            statsTableBody.innerHTML = '';
+            const sortedPlayers = [...players].sort((a,b) => stats[b].played - stats[a].played);
+            sortedPlayers.forEach(p => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">${p}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-600">${stats[p].played}</td>
+                `;
+                statsTableBody.appendChild(tr);
+            });
+        }
+
+        exportBtn.addEventListener('click', () => {
+            if (currentMatches.length === 0) return;
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; 
+            csvContent += "場次,隊伍1隊員1,隊伍1隊員2,隊伍2隊員1,隊伍2隊員2,備註\n";
+            currentMatches.forEach(m => {
+                const row = [
+                    m.id,
+                    m.team1[0], m.team1[1],
+                    m.team2[0], m.team2[1],
+                    m.reason
+                ].join(",");
+                csvContent += row + "\n";
+            });
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "pickleball_schedule.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
+        // Initialize defaults
+        playerInput.value = "張三\n李四\n王五\n趙六\n陳七\n林八\n黃九\n吳十";
+        playerInput.dispatchEvent(new Event('input'));
+        forcePartnerAllInput.dispatchEvent(new Event('change'));
+    </script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>
